@@ -54,5 +54,5 @@ services:
       - QUERY_TIMEOUT=300
       - SLACK_SIGNING_SECRET=null
       - TOOLS=["list_pods", "get_logs", "get_file_contents", "slack_post_message"]
-      - CHANNEL_ID=null
+      - SLACK_CHANNEL_ID=null
       - SERVICES=["cartservice", "adservice", "emailservice"]
