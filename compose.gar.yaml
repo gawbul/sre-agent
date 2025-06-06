@@ -1,6 +1,6 @@
 services:
   slack:
-    image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/slack:latest
+    image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/slack:dev
     environment:
       - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
       - SLACK_TEAM_ID=${SLACK_TEAM_ID}
@@ -11,12 +11,14 @@ services:
       timeout: 3s
       retries: 5
   kubernetes:
-    image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/kubernetes:latest
+    image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/kubernetes:dev
     volumes:
-      - ~/.aws:/home/appuser/.aws
+      - ~/.config/gcloud:/home/appuser/.config/gcloud
     environment:
       - TRANSPORT=SSE
+      - CLOUDSDK_CORE_PROJECT=${CLOUDSDK_CORE_PROJECT}
       - CLOUDSDK_COMPUTE_REGION=${CLOUDSDK_COMPUTE_REGION}
+      - GOOGLE_APPLICATION_CREDENTIALS=/home/appuser/.config/gcloud/application_default_credentials.json
       - TARGET_GKE_CLUSTER_NAME=${TARGET_GKE_CLUSTER_NAME}
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "3001"]
@@ -24,7 +26,7 @@ services:
       timeout: 3s
       retries: 5
   github:
-    image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/github:latest
+    image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/github:dev
     environment:
       - GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN}
       - TRANSPORT=SSE
@@ -34,7 +36,7 @@ services:
       timeout: 3s
       retries: 5
   prompt-server:
-    image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/prompt-server:latest
+    image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/prompt-server:dev
     environment:
       - GITHUB_ORGANISATION=${GITHUB_ORGANISATION}
       - GITHUB_REPO_NAME=${GITHUB_REPO_NAME}
@@ -46,7 +48,7 @@ services:
       retries: 5
 
   llm-server:
-    image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/llm-server:latest
+    image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/llm-server:dev
     environment:
       - PROVIDER=${PROVIDER}
       - MODEL=${MODEL}
@@ -59,7 +61,7 @@ services:
       retries: 5
 
   orchestrator:
-    image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/sre-orchestrator:latest
+    image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/sre-orchestrator:dev
     ports:
       - "8003:80"
     environment:
