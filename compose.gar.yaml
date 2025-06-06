@@ -48,8 +48,8 @@ services:
   llm-server:
     image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/llm-server:latest
     environment:
-      - PROVIDER=${LLM_PROVIDER}
-      - MODEL=${LLM_MODEL}
+      - PROVIDER=${PROVIDER}
+      - MODEL=${MODEL}
       - MAX_TOKENS=1000
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     healthcheck:

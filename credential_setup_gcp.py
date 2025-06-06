@@ -24,8 +24,8 @@ def main() -> None:
         "GITHUB_ORGANISATION": getpass("Enter your Github organisation name: "),
         "GITHUB_REPO_NAME": getpass("Enter your Github repository name: "),
         "PROJECT_ROOT": getpass("Enter your Github project root directory: "),
-        "LLM_PROVIDER": getpass("Enter your LLM provider name: "),
-        "LLM_MODEL": getpass("Enter your LLM model name: "),
+        "PROVIDER": getpass("Enter your LLM provider name: "),
+        "MODEL": getpass("Enter your LLM model name: "),
         "GEMINI_API_KEY": getpass("Enter your Gemini API Key: "),
         "DEV_BEARER_TOKEN": getpass(
             "Enter a bearer token (password) for developers to directly invoke the "
