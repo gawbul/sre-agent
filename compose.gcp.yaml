@@ -96,7 +96,7 @@ services:
       - DEV_BEARER_TOKEN=${DEV_BEARER_TOKEN}
       - QUERY_TIMEOUT=300
       - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
-      - TOOLS='["list_pods", "get_logs", "get_file_contents", "slack_post_message", "create_issue"]'
+      - TOOLS=${TOOLS}
       - SLACK_CHANNEL_ID=${SLACK_CHANNEL_ID}
       - SERVICES=${SERVICES}
       - HF_TOKEN=${HF_TOKEN}
