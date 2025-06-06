@@ -35,7 +35,7 @@ class MCPClient:
     """An MCP client for connecting to a server using SSE transport."""
 
     def __init__(self) -> None:
-        """Initialise the MCP client and set up the Anthropic API client."""
+        """Initialise the MCP client and set up the LLM API client."""
         self.sessions: dict[MCPServer, ServerSession] = {}
         self.messages: list[dict[str, Any]] = []
         self.stop_reason: str | None = None
@@ -123,7 +123,7 @@ class MCPClient:
     async def process_query(  # noqa: C901, PLR0912, PLR0915
         self, service: str, channel_id: str
     ) -> dict[str, Any]:
-        """Process a query using Claude and available tools."""
+        """Process a query using an LLM and available tools."""
         query = await self._get_prompt(service, channel_id)
         logger.info(f"Processing query: {query}...")
         start_time = time.perf_counter()
@@ -157,8 +157,8 @@ class MCPClient:
             self.stop_reason != "end_turn"
             and tool_retries < _get_client_config().max_tool_retries
         ):
-            logger.info("Sending request to Claude")
-            claude_start_time = time.perf_counter()
+            logger.info("Sending request to the LLM")
+            llm_start_time = time.perf_counter()
 
             payload = {"messages": self.messages, "tools": available_tools}
 
@@ -170,8 +170,8 @@ class MCPClient:
 
             logger.debug(response)
 
-            claude_duration = time.perf_counter() - claude_start_time
-            logger.info(f"Claude request took {claude_duration:.2f} seconds")
+            llm_duration = time.perf_counter() - llm_start_time
+            logger.info(f"LLM request took {llm_duration:.2f} seconds")
             self.stop_reason = response["stop_reason"]
 
             # Track token usage from this response
@@ -192,11 +192,11 @@ class MCPClient:
             for content in response["content"]:
                 if content["type"] == "text":
                     final_text.append(content["text"])
-                    logger.debug(f"Claude response: {content['text']}")
+                    logger.debug(f"LLM response: {content['text']}")
                 elif content["type"] == "tool_use":
                     tool_name = content["name"]
                     tool_args = content["input"]
-                    logger.info(f"Claude requested to use tool: {tool_name}")
+                    logger.info(f"LLM requested to use tool: {tool_name}")
 
                     if await self._run_firewall_check(
                         f"Calling tool {tool_name} with args: {tool_args}", is_tool=True
