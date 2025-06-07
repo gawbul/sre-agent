@@ -64,7 +64,7 @@ class AuthConfig:
 class ClientConfig:
     """A client config storing parsed env variables."""
 
-    channel_id: str = os.getenv("SLACK_CHANNEL_ID", "")
+    slack_channel_id: str = os.getenv("SLACK_CHANNEL_ID", "")
     tools: list[str] = field(
         default_factory=lambda: json.loads(os.getenv("TOOLS", "[]"))
     )

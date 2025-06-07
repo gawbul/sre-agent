@@ -62,6 +62,12 @@ services:
 
   orchestrator:
     image: ${CLOUDSDK_COMPUTE_REGION}-docker.pkg.dev/${CLOUDSDK_CORE_PROJECT}/mcp/sre-orchestrator:dev
+    volumes:
+      - source: ~/.cache/huggingface
+        target: /root/.cache/huggingface
+        type: bind
+        bind:
+          create_host_path: true
     ports:
       - "8003:80"
     environment:

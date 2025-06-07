@@ -105,12 +105,13 @@ class MCPClient:
 
         self.sessions[service] = ServerSession(tools=tools, session=session)
 
-    async def _get_prompt(self, service: str, channel_id: str) -> PromptMessage:
+    async def _get_prompt(self, service: str, slack_channel_id: str) -> PromptMessage:
         """A helper method for retrieving the prompt from the prompt server."""
         prompt: GetPromptResult = await self.sessions[
             MCPServer.PROMPT
         ].session.get_prompt(
-            "diagnose", arguments={"service": service, "channel_id": channel_id}
+            "diagnose",
+            arguments={"service": service, "slack_channel_id": slack_channel_id},
         )
 
         if isinstance(prompt.messages[0].content, TextContent):
@@ -121,10 +122,10 @@ class MCPClient:
             )
 
     async def process_query(  # noqa: C901, PLR0912, PLR0915
-        self, service: str, channel_id: str
+        self, service: str, slack_channel_id: str
     ) -> dict[str, Any]:
         """Process a query using an LLM and available tools."""
-        query = await self._get_prompt(service, channel_id)
+        query = await self._get_prompt(service, slack_channel_id)
         logger.info(f"Processing query: {query}...")
         start_time = time.perf_counter()
 
@@ -323,7 +324,8 @@ async def run_diagnosis_and_post(service: str) -> None:
             async def _run_diagnosis(mcp_client: MCPClient) -> dict[str, Any]:
                 """Inner function to run the actual diagnosis query."""
                 result = await mcp_client.process_query(
-                    service=service, channel_id=_get_client_config().channel_id
+                    service=service,
+                    slack_channel_id=_get_client_config().slack_channel_id,
                 )
 
                 logger.info(

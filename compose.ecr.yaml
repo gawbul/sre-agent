@@ -60,6 +60,12 @@ services:
 
   orchestrator:
     image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/mcp/sre-orchestrator:latest
+    volumes:
+      - source: ~/.cache/huggingface
+        target: /root/.cache/huggingface
+        type: bind
+        bind:
+          create_host_path: true
     ports:
       - "8003:80"
     environment:
