@@ -11,19 +11,24 @@ import requests
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from llamafirewall import ScanResult  # type: ignore
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.shared.exceptions import McpError
-from mcp.types import GetPromptResult, PromptMessage, TextContent
+from mcp.types import GetPromptResult, TextContent
+from shared.logger import logger  # type: ignore[import-not-found]
+from shared.schemas import (  # type: ignore[import-not-found]
+    Message,
+    MessageBlock,
+    TextBlock,
+    TextGenerationPayload,
+)
 from utils.auth import is_request_valid  # type: ignore
-from utils.firewall import check_with_llama_firewall  # type: ignore
-from utils.logger import logger  # type: ignore
 from utils.schemas import ClientConfig, MCPServer, ServerSession  # type: ignore
 
 load_dotenv()
 
 PORT = 3001
+END_TURN = "end_turn"
 
 
 @lru_cache
@@ -68,33 +73,42 @@ class MCPClient:
             True if the input is blocked, False otherwise.
         """
         logger.info("Running text through Llama Firewall")
-        is_blocked, result = cast(
-            tuple[bool, ScanResult],
-            await check_with_llama_firewall(text, is_tool=is_tool),
+
+        response = requests.post(
+            "http://llama-firewall:8000/check",
+            json={"content": text, "is_tool": is_tool},
+            timeout=60,
         )
-        logger.info("Llama Firewall result: %s", "BLOCKED" if is_blocked else "ALLOWED")
-        if is_blocked:
-            self.messages.append({"role": "assistant", "content": result.reason})
-            self.stop_reason = "end_turn"
-        return is_blocked
+
+        response.raise_for_status()
+
+        response = response.json()
+
+        result, block = response["result"], cast(bool, response["block"])
+
+        logger.info("Llama Firewall result: %s", "BLOCKED" if block else "ALLOWED")
+
+        if block:
+            self.messages.append({"role": "assistant", "content": result["reason"]})
+            self.stop_reason = END_TURN
+        return block
 
     async def connect_to_sse_server(self, service: MCPServer) -> None:
         """Connect to an MCP server running with SSE transport."""
         server_url = f"http://{service}:{PORT}/sse"
         logger.info(f"Connecting to SSE server: {server_url}")
 
-        # Create and enter the SSE client context
+        logger.info("Creating SSE client context")
         stream_ctx = sse_client(url=server_url)
         streams = await self.exit_stack.enter_async_context(stream_ctx)
 
-        # Create and enter the ClientSession context
+        logger.info("Creating MCP client session")
         session = ClientSession(*streams)
         session = await self.exit_stack.enter_async_context(session)
 
-        # Initialise the session
+        logger.info(f"Initialising session for {server_url}")
         await session.initialize()
 
-        # List available tools to verify connection
         logger.info(f"Initialised SSE client for {server_url}")
         logger.debug("Listing available tools")
         response = await session.list_tools()
@@ -105,7 +119,7 @@ class MCPClient:
 
         self.sessions[service] = ServerSession(tools=tools, session=session)
 
-    async def _get_prompt(self, service: str, slack_channel_id: str) -> PromptMessage:
+    async def _get_prompt(self, service: str, slack_channel_id: str) -> MessageBlock:
         """A helper method for retrieving the prompt from the prompt server."""
         prompt: GetPromptResult = await self.sessions[
             MCPServer.PROMPT
@@ -115,7 +129,10 @@ class MCPClient:
         )
 
         if isinstance(prompt.messages[0].content, TextContent):
-            return prompt.messages[0]
+            return MessageBlock(
+                role=prompt.messages[0].role,
+                content=[TextBlock(**prompt.messages[0].content.model_dump())],
+            )
         else:
             raise TypeError(
                 f"{type(prompt.messages[0].content)} is invalid for this agent."
@@ -124,12 +141,14 @@ class MCPClient:
     async def process_query(  # noqa: C901, PLR0912, PLR0915
         self, service: str, slack_channel_id: str
     ) -> dict[str, Any]:
-        """Process a query using an LLM and available tools."""
+        """Process a query using Claude and available tools."""
         query = await self._get_prompt(service, slack_channel_id)
         logger.info(f"Processing query: {query}...")
         start_time = time.perf_counter()
 
-        self.messages = [{"role": query.role, "content": [query.content.model_dump()]}]
+        _ = await self._run_firewall_check(str(query.content[0].model_dump()))
+
+        self.messages = [{"role": query.role, "content": query.content}]
 
         available_tools = []
 
@@ -144,8 +163,6 @@ class MCPClient:
 
         final_text = []
 
-        _ = await self._run_firewall_check(str(query.content.model_dump()))
-
         # Track token usage
         total_input_tokens = 0
         total_output_tokens = 0
@@ -155,48 +172,54 @@ class MCPClient:
         tool_retries = 0
 
         while (
-            self.stop_reason != "end_turn"
+            self.stop_reason != END_TURN
             and tool_retries < _get_client_config().max_tool_retries
         ):
             logger.info("Sending request to the LLM")
             llm_start_time = time.perf_counter()
 
-            payload = {"messages": self.messages, "tools": available_tools}
+            payload = TextGenerationPayload(
+                messages=self.messages, tools=available_tools
+            ).model_dump(mode="json")
 
             logger.debug(payload)
 
             response = requests.post(
                 "http://llm-server:8000/generate", json=payload, timeout=60
-            ).json()
+            )
 
-            logger.debug(response)
+            response.raise_for_status()
+
+            llm_response = Message(**response.json())
+
+            logger.debug(llm_response)
 
             llm_duration = time.perf_counter() - llm_start_time
             logger.info(f"LLM request took {llm_duration:.2f} seconds")
-            self.stop_reason = response["stop_reason"]
+            self.stop_reason = llm_response.stop_reason
 
             # Track token usage from this response
-            if response.get("usage"):
-                total_input_tokens += response["usage"]["input_tokens"]
-                total_output_tokens += response["usage"]["output_tokens"]
-                if response["usage"]["cache_creation_input_tokens"]:
-                    total_cache_creation_tokens += response["usage"][
-                        "cache_creation_input_tokens"
-                    ]
-                if response["usage"]["cache_read_input_tokens"]:
-                    total_cache_read_tokens += response["usage"][
-                        "cache_read_input_tokens"
-                    ]
+            if llm_response.usage:
+                total_input_tokens += llm_response.usage.input_tokens
+                total_output_tokens += llm_response.usage.output_tokens
+                if llm_response.usage.cache_creation_input_tokens:
+                    total_cache_creation_tokens += (
+                        llm_response.usage.cache_creation_input_tokens
+                    )
+                if llm_response.usage.cache_read_input_tokens:
+                    total_cache_read_tokens += (
+                        llm_response.usage.cache_read_input_tokens
+                    )
 
             assistant_message_content = []
 
-            for content in response["content"]:
-                if content["type"] == "text":
-                    final_text.append(content["text"])
-                    logger.debug(f"LLM response: {content['text']}")
-                elif content["type"] == "tool_use":
-                    tool_name = content["name"]
-                    tool_args = content["input"]
+            for content in llm_response.content:
+                if content.type == "text":
+                    final_text.append(content.text)
+                    logger.debug(f"LLM response: {content.text}")
+                elif content.type == "tool_use":
+                    tool_name = content.name
+                    tool_args = content.arguments
                     logger.info(f"LLM requested to use tool: {tool_name}")
 
                     if await self._run_firewall_check(
@@ -233,7 +256,7 @@ class MCPClient:
                                 error_msg = f"Tool '{tool_name}' failed with error: {str(e)}. Tool args were: {tool_args}. Check the arguments and try again fixing the error."  # noqa: E501
                                 logger.info(error_msg)
                                 result_content = [
-                                    TextContent(type="text", text=error_msg)
+                                    TextBlock(type="text", text=error_msg)
                                 ]
                                 is_error = True
                                 tool_retries += 1
@@ -259,9 +282,10 @@ class MCPClient:
                             "content": [
                                 {
                                     "type": "tool_result",
-                                    "tool_use_id": content["id"],
+                                    "tool_use_id": content.id,
+                                    "name": tool_name,
                                     "content": [i.model_dump() for i in result_content],
-                                    "isError": is_error,
+                                    "is_error": is_error,
                                 }
                             ],
                         }

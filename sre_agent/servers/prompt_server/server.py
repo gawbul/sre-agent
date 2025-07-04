@@ -2,11 +2,13 @@
 
 from functools import lru_cache
 
+from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
 from utils.schemas import PromptServerConfig  # type: ignore
 
 mcp = FastMCP("sre-agent-prompt")
-mcp.settings.host = "0.0.0.0"
+
+mcp.settings.host = "127.0.0.1"  # nosec B104
 mcp.settings.port = 3001
 
 
@@ -36,5 +38,13 @@ issue please report this to the following Slack channel: {slack_channel_id}.
 Please only do this ONCE, don't keep making issues or sending messages to Slack."""
 
 
-if __name__ == "__main__":
-    mcp.run()
+app = FastAPI()
+
+
+@app.get("/health")
+def healthcheck() -> dict[str, str]:
+    """Health check endpoint for the firewall."""
+    return {"status": "healthy"}
+
+
+app.mount("/", mcp.sse_app())
